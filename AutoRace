@@ -1,27 +1,15 @@
 --[[
-    ================================================================================
-    STRONGBLOXIAN AUTO-RACE | Muscle Legends
-    ================================================================================
-    📌 DESCRIPTION:
-    Automatically completes the Strongbloxian Race event. 
-    Features precise zone detection, hard stop at the finish line, 
-    automatic speed restoration, and Anti-AFK.
-
-    ⚡ FEATURES:
-    - Auto-move through all zones.
-    - Hard stop and anchor at the exact finish coordinate.
-    - Auto-teleport to a custom start position.
-    - Restores WalkSpeed automatically.
-    - Anti-AFK system using VirtualUser.
-    ================================================================================
+    R1QVEX AUTO RACE | Muscle Legends
+    Key: R1QTHEKING
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
---==================== CONFIGURATION ====================
+local KEY = "R1QTHEKING"
 local SPAWN_POS = Vector3.new(-12640, 6.351, -4197)
 local NEW_START_POS = Vector3.new(-12865.279296875, 6.390514373779297, -4201.7236328125)
 local FINISH_POS = Vector3.new(-14544.0263671875, 6.3919878005981445, -4131.28662109375)
@@ -34,20 +22,26 @@ local ZoneColors = {
     Green  = Color3.fromRGB(0, 130, 0)
 }
 
-local State = { AutoRace = false, AntiAFK = false }
-local ZoneText = nil
-local forwardDir = nil
-local isFinished = false
-local originalSpeed = 16
-local lastTeleportTime = 0
+local Theme = {
+    Bg = Color3.fromRGB(12, 12, 15),
+    Panel = Color3.fromRGB(22, 18, 22),
+    Accent = Color3.fromRGB(220, 40, 40),
+    AccentDark = Color3.fromRGB(150, 20, 20),
+    Text = Color3.fromRGB(255, 255, 255),
+    TextDim = Color3.fromRGB(160, 140, 140),
+    Border = Color3.fromRGB(80, 20, 20),
+    Success = Color3.fromRGB(0, 200, 100),
+    Danger = Color3.fromRGB(255, 60, 60)
+}
 
---==================== ZONE DETECTION ====================
+local State = { AutoRace = false, AntiAFK = false }
+local ZoneText, forwardDir, isFinished, originalSpeed, lastTeleportTime = nil, nil, false, 16, 0
+
 local function getZone(hrp, char)
     local params = RaycastParams.new()
     params.FilterDescendantsInstances = {char}
     params.FilterType = Enum.RaycastFilterType.Exclude
     local result = workspace:Raycast(hrp.Position - Vector3.new(0, 5, 0), Vector3.new(0, -25, 0), params)
-    
     if result then
         local color = result.Instance.Color
         for zoneName, zoneColor in pairs(ZoneColors) do
@@ -59,37 +53,30 @@ local function getZone(hrp, char)
     return "Unknown"
 end
 
---==================== ANTI-AFK SYSTEM ====================
 LocalPlayer.Idled:Connect(function()
     if State.AntiAFK then
         VirtualUser:CaptureController()
         VirtualUser:ClickButton2(Vector2.new())
-        print("[Anti-AFK] Idle detected. Bypassing kick.")
     end
 end)
 
---==================== MAIN MOVEMENT LOOP ====================
 local function startAutoRace()
     if State.AutoRace then return end
     State.AutoRace = true
     forwardDir = nil
     isFinished = false
-    
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
         originalSpeed = hum.WalkSpeed
         if originalSpeed <= 0 then originalSpeed = 16 end 
     end
-    
     task.spawn(function()
         while State.AutoRace do
             local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            
             if hrp and hum then
-                -- 1. Spawn Detection & Speed Reset
                 if (hrp.Position - SPAWN_POS).Magnitude < 50 and tick() - lastTeleportTime > 3 then
                     lastTeleportTime = tick()
                     hrp.CFrame = CFrame.new(NEW_START_POS)
@@ -97,50 +84,35 @@ local function startAutoRace()
                     hum.WalkSpeed = originalSpeed 
                     task.wait(1)
                 end
-                
                 local zone = getZone(hrp, char)
                 if ZoneText then ZoneText.Text = "Zone: " .. zone end
-                
-                -- 2. Capture Direction
                 if not forwardDir and (zone == "Yellow" or zone == "Blue" or zone == "Green") then
                     local look = hrp.CFrame.LookVector
                     forwardDir = Vector3.new(look.X, 0, look.Z).Unit
                 end
-                
                 local distToEnd = (hrp.Position - FINISH_POS).Magnitude
-                
-                -- 3. Movement Logic
                 if isFinished then
-                    -- Hard stop to prevent falling off
                     hum.WalkSpeed = 0
                     hum:Move(Vector3.zero, false)
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
-                    
                 elseif zone == "Green" or distToEnd < 150 then
-                    if distToEnd > 10 then
+                    if distToEnd > 5 then
                         hum.WalkSpeed = originalSpeed
                         hum:MoveTo(FINISH_POS)
                     else
-                        -- Finish line reached
                         isFinished = true
                         hum.WalkSpeed = 0
                         hum:Move(Vector3.zero, false)
-                        hrp.CFrame = CFrame.new(FINISH_POS)
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
-                    
                 elseif zone == "Yellow" or zone == "Blue" then
                     hum.WalkSpeed = originalSpeed
-                    if forwardDir then
-                        hum:MoveTo(hrp.Position + (forwardDir * 50))
-                    end
-                    
+                    if forwardDir then hum:MoveTo(hrp.Position + (forwardDir * 50)) end
                 elseif zone == "Purple" or zone == "Red" then
                     hum.WalkSpeed = originalSpeed
-                    hum:MoveTo(hrp.Position) -- Stop for manual clicking
-                    
+                    hum:MoveTo(hrp.Position) 
                 else
                     hum.WalkSpeed = originalSpeed
                     if forwardDir then hum:MoveTo(hrp.Position + (forwardDir * 50)) end
@@ -161,74 +133,188 @@ local function stopAutoRace()
     end
 end
 
---==================== USER INTERFACE ====================
+local existing = PlayerGui:FindFirstChild("R1QVEX_AutoRaceUI")
+if existing then existing:Destroy() end
+
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "StrongbloxianRaceUI"
+ScreenGui.Name = "R1QVEX_AutoRaceUI"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.Parent = PlayerGui
+
+local loginFrame = Instance.new("Frame")
+loginFrame.Size = UDim2.new(0, 320, 0, 200)
+loginFrame.Position = UDim2.new(0.5, -160, 0.5, -100)
+loginFrame.BackgroundColor3 = Theme.Bg
+loginFrame.BorderSizePixel = 0
+loginFrame.ZIndex = 2
+loginFrame.Parent = ScreenGui
+Instance.new("UICorner", loginFrame).CornerRadius = UDim.new(0, 12)
+local loginStroke = Instance.new("UIStroke", loginFrame)
+loginStroke.Color = Theme.AccentDark
+loginStroke.Thickness = 2
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.Position = UDim2.new(0, 0, 0, 20)
+title.BackgroundTransparency = 1
+title.Text = "R1QVEX AUTO RACE"
+title.TextColor3 = Theme.Accent
+title.TextSize = 20
+title.Font = Enum.Font.GothamBlack
+title.ZIndex = 3
+title.Parent = loginFrame
+
+local keyInput = Instance.new("TextBox")
+keyInput.Size = UDim2.new(1, -50, 0, 40)
+keyInput.Position = UDim2.new(0, 25, 0, 70)
+keyInput.BackgroundColor3 = Theme.Panel
+keyInput.TextColor3 = Theme.Text
+keyInput.Text = ""
+keyInput.PlaceholderText = "Enter Key..."
+keyInput.PlaceholderColor3 = Theme.TextDim
+keyInput.Font = Enum.Font.GothamBold
+keyInput.ZIndex = 3
+keyInput.Parent = loginFrame
+Instance.new("UICorner", keyInput).CornerRadius = UDim.new(0, 8)
+local keyStroke = Instance.new("UIStroke", keyInput)
+keyStroke.Color = Theme.Border
+
+local verifyBtn = Instance.new("TextButton")
+verifyBtn.Size = UDim2.new(1, -50, 0, 40)
+verifyBtn.Position = UDim2.new(0, 25, 0, 130)
+verifyBtn.BackgroundColor3 = Theme.Accent
+verifyBtn.TextColor3 = Theme.Bg
+verifyBtn.Text = "VERIFY"
+verifyBtn.Font = Enum.Font.GothamBlack
+verifyBtn.TextSize = 14
+verifyBtn.ZIndex = 3
+verifyBtn.Parent = loginFrame
+Instance.new("UICorner", verifyBtn).CornerRadius = UDim.new(0, 8)
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 220, 0, 130)
-MainFrame.Position = UDim2.new(0, 20, 0.5, -65)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 5, 5)
+MainFrame.Size = UDim2.new(0, 240, 0, 150)
+MainFrame.Position = UDim2.new(0, 20, 0.5, -75)
+MainFrame.BackgroundColor3 = Theme.Bg
 MainFrame.Active = true
 MainFrame.Draggable = true
+MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
-local stroke = Instance.new("UIStroke", MainFrame)
-stroke.Color = Color3.fromRGB(255, 50, 50)
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+local mainStroke = Instance.new("UIStroke", MainFrame)
+mainStroke.Color = Theme.Border
+mainStroke.Thickness = 2
+
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 40)
+Header.BackgroundColor3 = Theme.Panel
+Header.Parent = MainFrame
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 25)
+Title.Size = UDim2.new(1, -60, 1, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "🏁 Auto-Race (English)"
-Title.TextColor3 = Color3.fromRGB(255, 50, 50)
-Title.Font = Enum.Font.GothamBold
+Title.Text = "R1QVEX AUTO RACE"
+Title.TextColor3 = Theme.Accent
+Title.Font = Enum.Font.GothamBlack
 Title.TextSize = 14
-Title.Parent = MainFrame
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 25, 0, 25)
+MinimizeBtn.Position = UDim2.new(1, -30, 0, 7)
+MinimizeBtn.BackgroundColor3 = Theme.AccentDark
+MinimizeBtn.Text = "−"
+MinimizeBtn.TextColor3 = Theme.Text
+MinimizeBtn.TextSize = 18
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Parent = Header
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 6)
 
 ZoneText = Instance.new("TextLabel")
-ZoneText.Size = UDim2.new(1, 0, 0, 20)
-ZoneText.Position = UDim2.new(0, 0, 0, 25)
+ZoneText.Size = UDim2.new(1, -20, 0, 25)
+ZoneText.Position = UDim2.new(0, 10, 0, 50)
 ZoneText.BackgroundTransparency = 1
 ZoneText.Text = "Zone: Unknown"
-ZoneText.TextColor3 = Color3.new(1, 1, 1)
-ZoneText.Font = Enum.Font.Gotham
-ZoneText.TextSize = 12
+ZoneText.TextColor3 = Theme.Text
+ZoneText.Font = Enum.Font.GothamBold
+ZoneText.TextSize = 13
+ZoneText.TextXAlignment = Enum.TextXAlignment.Left
 ZoneText.Parent = MainFrame
 
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(1, -20, 0, 30)
-ToggleBtn.Position = UDim2.new(0, 10, 0, 50)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-ToggleBtn.Text = "▶ Start"
-ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+ToggleBtn.Size = UDim2.new(1, -20, 0, 35)
+ToggleBtn.Position = UDim2.new(0, 10, 0, 80)
+ToggleBtn.BackgroundColor3 = Theme.Panel
+ToggleBtn.Text = "▶ Start Race"
+ToggleBtn.TextColor3 = Theme.Text
 ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.TextSize = 12
+ToggleBtn.TextSize = 13
 ToggleBtn.Parent = MainFrame
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 8)
+local toggleStroke = Instance.new("UIStroke", ToggleBtn)
+toggleStroke.Color = Theme.Border
+toggleStroke.Thickness = 1
 
 local AntiAfkBtn = Instance.new("TextButton")
 AntiAfkBtn.Size = UDim2.new(1, -20, 0, 25)
-AntiAfkBtn.Position = UDim2.new(0, 10, 0, 90)
-AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+AntiAfkBtn.Position = UDim2.new(0, 10, 0, 120)
+AntiAfkBtn.BackgroundColor3 = Theme.Panel
 AntiAfkBtn.Text = "Anti-AFK: OFF"
-AntiAfkBtn.TextColor3 = Color3.new(1, 1, 1)
+AntiAfkBtn.TextColor3 = Theme.TextDim
 AntiAfkBtn.Font = Enum.Font.GothamBold
 AntiAfkBtn.TextSize = 11
 AntiAfkBtn.Parent = MainFrame
 Instance.new("UICorner", AntiAfkBtn).CornerRadius = UDim.new(0, 6)
+local antiAfkStroke = Instance.new("UIStroke", AntiAfkBtn)
+antiAfkStroke.Color = Theme.Border
+antiAfkStroke.Thickness = 1
 
---==================== EVENTS ====================
+verifyBtn.MouseButton1Click:Connect(function()
+    if keyInput.Text == KEY then
+        loginFrame:Destroy()
+        MainFrame.Visible = true
+    else
+        keyInput.Text = ""
+        keyInput.PlaceholderText = "Incorrect Key ❌"
+        verifyBtn.BackgroundColor3 = Theme.Danger
+        task.wait(1)
+        verifyBtn.BackgroundColor3 = Theme.Accent
+    end
+end)
+
+local minimized = false
+MinimizeBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        MainFrame.Size = UDim2.new(0, 240, 0, 40)
+        ZoneText.Visible = false
+        ToggleBtn.Visible = false
+        AntiAfkBtn.Visible = false
+        MinimizeBtn.Text = "+"
+    else
+        MainFrame.Size = UDim2.new(0, 240, 0, 150)
+        ZoneText.Visible = true
+        ToggleBtn.Visible = true
+        AntiAfkBtn.Visible = true
+        MinimizeBtn.Text = "−"
+    end
+end)
+
 ToggleBtn.MouseButton1Click:Connect(function()
     if State.AutoRace then
         stopAutoRace()
-        ToggleBtn.Text = "▶ Start"
-        ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        ToggleBtn.Text = "▶ Start Race"
+        ToggleBtn.BackgroundColor3 = Theme.Panel
+        ToggleBtn.TextColor3 = Theme.Text
+        toggleStroke.Color = Theme.Border
     else
         startAutoRace()
-        ToggleBtn.Text = "⏹ Stop"
-        ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        ToggleBtn.Text = "⏹ Stop Race"
+        ToggleBtn.BackgroundColor3 = Theme.Accent
+        ToggleBtn.TextColor3 = Theme.Bg
+        toggleStroke.Color = Theme.Accent
     end
 end)
 
@@ -236,9 +322,13 @@ AntiAfkBtn.MouseButton1Click:Connect(function()
     State.AntiAFK = not State.AntiAFK
     if State.AntiAFK then
         AntiAfkBtn.Text = "Anti-AFK: ON"
-        AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+        AntiAfkBtn.BackgroundColor3 = Theme.Success
+        AntiAfkBtn.TextColor3 = Theme.Bg
+        antiAfkStroke.Color = Theme.Success
     else
         AntiAfkBtn.Text = "Anti-AFK: OFF"
-        AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        AntiAfkBtn.BackgroundColor3 = Theme.Panel
+        AntiAfkBtn.TextColor3 = Theme.TextDim
+        antiAfkStroke.Color = Theme.Border
     end
 end)
