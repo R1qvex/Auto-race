@@ -1,0 +1,244 @@
+--[[
+    ================================================================================
+    STRONGBLOXIAN AUTO-RACE | Muscle Legends
+    ================================================================================
+    📌 DESCRIPTION:
+    Automatically completes the Strongbloxian Race event. 
+    Features precise zone detection, hard stop at the finish line, 
+    automatic speed restoration, and Anti-AFK.
+
+    ⚡ FEATURES:
+    - Auto-move through all zones.
+    - Hard stop and anchor at the exact finish coordinate.
+    - Auto-teleport to a custom start position.
+    - Restores WalkSpeed automatically.
+    - Anti-AFK system using VirtualUser.
+    ================================================================================
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+
+--==================== CONFIGURATION ====================
+local SPAWN_POS = Vector3.new(-12640, 6.351, -4197)
+local NEW_START_POS = Vector3.new(-12865.279296875, 6.390514373779297, -4201.7236328125)
+local FINISH_POS = Vector3.new(-14544.0263671875, 6.3919878005981445, -4131.28662109375)
+
+local ZoneColors = {
+    Yellow = Color3.fromRGB(221, 181, 0),
+    Blue   = Color3.fromRGB(0, 115, 181),
+    Purple = Color3.fromRGB(100, 30, 120),
+    Red    = Color3.fromRGB(180, 0, 0),
+    Green  = Color3.fromRGB(0, 130, 0)
+}
+
+local State = { AutoRace = false, AntiAFK = false }
+local ZoneText = nil
+local forwardDir = nil
+local isFinished = false
+local originalSpeed = 16
+local lastTeleportTime = 0
+
+--==================== ZONE DETECTION ====================
+local function getZone(hrp, char)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {char}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local result = workspace:Raycast(hrp.Position - Vector3.new(0, 5, 0), Vector3.new(0, -25, 0), params)
+    
+    if result then
+        local color = result.Instance.Color
+        for zoneName, zoneColor in pairs(ZoneColors) do
+            if (color.R - zoneColor.R)^2 + (color.G - zoneColor.G)^2 + (color.B - zoneColor.B)^2 < 0.1 then
+                return zoneName
+            end
+        end
+    end
+    return "Unknown"
+end
+
+--==================== ANTI-AFK SYSTEM ====================
+LocalPlayer.Idled:Connect(function()
+    if State.AntiAFK then
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+        print("[Anti-AFK] Idle detected. Bypassing kick.")
+    end
+end)
+
+--==================== MAIN MOVEMENT LOOP ====================
+local function startAutoRace()
+    if State.AutoRace then return end
+    State.AutoRace = true
+    forwardDir = nil
+    isFinished = false
+    
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        originalSpeed = hum.WalkSpeed
+        if originalSpeed <= 0 then originalSpeed = 16 end 
+    end
+    
+    task.spawn(function()
+        while State.AutoRace do
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            
+            if hrp and hum then
+                -- 1. Spawn Detection & Speed Reset
+                if (hrp.Position - SPAWN_POS).Magnitude < 50 and tick() - lastTeleportTime > 3 then
+                    lastTeleportTime = tick()
+                    hrp.CFrame = CFrame.new(NEW_START_POS)
+                    isFinished = false
+                    hum.WalkSpeed = originalSpeed 
+                    task.wait(1)
+                end
+                
+                local zone = getZone(hrp, char)
+                if ZoneText then ZoneText.Text = "Zone: " .. zone end
+                
+                -- 2. Capture Direction
+                if not forwardDir and (zone == "Yellow" or zone == "Blue" or zone == "Green") then
+                    local look = hrp.CFrame.LookVector
+                    forwardDir = Vector3.new(look.X, 0, look.Z).Unit
+                end
+                
+                local distToEnd = (hrp.Position - FINISH_POS).Magnitude
+                
+                -- 3. Movement Logic
+                if isFinished then
+                    -- Hard stop to prevent falling off
+                    hum.WalkSpeed = 0
+                    hum:Move(Vector3.zero, false)
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    
+                elseif zone == "Green" or distToEnd < 150 then
+                    if distToEnd > 10 then
+                        hum.WalkSpeed = originalSpeed
+                        hum:MoveTo(FINISH_POS)
+                    else
+                        -- Finish line reached
+                        isFinished = true
+                        hum.WalkSpeed = 0
+                        hum:Move(Vector3.zero, false)
+                        hrp.CFrame = CFrame.new(FINISH_POS)
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                    end
+                    
+                elseif zone == "Yellow" or zone == "Blue" then
+                    hum.WalkSpeed = originalSpeed
+                    if forwardDir then
+                        hum:MoveTo(hrp.Position + (forwardDir * 50))
+                    end
+                    
+                elseif zone == "Purple" or zone == "Red" then
+                    hum.WalkSpeed = originalSpeed
+                    hum:MoveTo(hrp.Position) -- Stop for manual clicking
+                    
+                else
+                    hum.WalkSpeed = originalSpeed
+                    if forwardDir then hum:MoveTo(hrp.Position + (forwardDir * 50)) end
+                end
+            end
+            RunService.Heartbeat:Wait()
+        end
+    end)
+end
+
+local function stopAutoRace()
+    State.AutoRace = false
+    isFinished = false
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        char.Humanoid.WalkSpeed = originalSpeed
+        char.Humanoid:MoveTo(char.HumanoidRootPart.Position)
+    end
+end
+
+--==================== USER INTERFACE ====================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StrongbloxianRaceUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 220, 0, 130)
+MainFrame.Position = UDim2.new(0, 20, 0.5, -65)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 5, 5)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+local stroke = Instance.new("UIStroke", MainFrame)
+stroke.Color = Color3.fromRGB(255, 50, 50)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 25)
+Title.BackgroundTransparency = 1
+Title.Text = "🏁 Auto-Race (English)"
+Title.TextColor3 = Color3.fromRGB(255, 50, 50)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.Parent = MainFrame
+
+ZoneText = Instance.new("TextLabel")
+ZoneText.Size = UDim2.new(1, 0, 0, 20)
+ZoneText.Position = UDim2.new(0, 0, 0, 25)
+ZoneText.BackgroundTransparency = 1
+ZoneText.Text = "Zone: Unknown"
+ZoneText.TextColor3 = Color3.new(1, 1, 1)
+ZoneText.Font = Enum.Font.Gotham
+ZoneText.TextSize = 12
+ZoneText.Parent = MainFrame
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(1, -20, 0, 30)
+ToggleBtn.Position = UDim2.new(0, 10, 0, 50)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+ToggleBtn.Text = "▶ Start"
+ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.TextSize = 12
+ToggleBtn.Parent = MainFrame
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
+
+local AntiAfkBtn = Instance.new("TextButton")
+AntiAfkBtn.Size = UDim2.new(1, -20, 0, 25)
+AntiAfkBtn.Position = UDim2.new(0, 10, 0, 90)
+AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+AntiAfkBtn.Text = "Anti-AFK: OFF"
+AntiAfkBtn.TextColor3 = Color3.new(1, 1, 1)
+AntiAfkBtn.Font = Enum.Font.GothamBold
+AntiAfkBtn.TextSize = 11
+AntiAfkBtn.Parent = MainFrame
+Instance.new("UICorner", AntiAfkBtn).CornerRadius = UDim.new(0, 6)
+
+--==================== EVENTS ====================
+ToggleBtn.MouseButton1Click:Connect(function()
+    if State.AutoRace then
+        stopAutoRace()
+        ToggleBtn.Text = "▶ Start"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    else
+        startAutoRace()
+        ToggleBtn.Text = "⏹ Stop"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    end
+end)
+
+AntiAfkBtn.MouseButton1Click:Connect(function()
+    State.AntiAFK = not State.AntiAFK
+    if State.AntiAFK then
+        AntiAfkBtn.Text = "Anti-AFK: ON"
+        AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    else
+        AntiAfkBtn.Text = "Anti-AFK: OFF"
+        AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    end
+end)
